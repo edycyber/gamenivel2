@@ -270,10 +270,10 @@
 <body>
     <div class="instructions">
         WASD to move | Mouse to aim | Left Click to shoot | R to reload | 
-        Space to jump | Shift to sprint | 1-2 to switch weapons | E to enter vehicle
+        Space to jump | Shift to sprint | 1-2 to switch weapons | Defend the camp!
     </div>
     <div id="preloader">
-        <h2>Loading Jojo War Game...</h2>
+        <h2>Loading Small Camp Defense Skirmish...</h2>
         <div id="loading-bar">
             <div id="loading-progress"></div>
         </div>
@@ -299,7 +299,7 @@
         </div>
         <div id="ammo-counter">30 / 90</div>
         <div class="weapon-switch">Assault Rifle</div>
-        <div id="kill-counter">Kills: 0</div>
+        <div id="kill-counter">Enemies Eliminated: 0</div>
     </div>
     
     <div id="enemy-container"></div>
@@ -308,9 +308,9 @@
     <div id="fps-counter">FPS: --</div>
     
     <div id="game-over">
-        <h1 id="game-over-title">Game Over</h1>
+        <h1 id="game-over-title">Camp Overrun</h1>
         <h2 id="game-over-subtitle"></h2>
-        <button id="restart-button">Restart Game</button>
+        <button id="restart-button">Restart Defense</button>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -328,7 +328,7 @@
     <script>
         // Game variables
         let assetsLoaded = 0;
-        const totalAssets = 5;
+        const totalAssets = 6; // Increased for camp
         let kills = 0;
         let health = 100;
         let shield = 100;
@@ -339,6 +339,7 @@
         let enemies = [];
         let obstacles = [];
         let bullets = [];
+        let enemyBullets = []; // New array for enemy bullets
         let currentWeapon = 0;
         let backgroundMusic;
         let musicStarted = false;
@@ -453,6 +454,16 @@
         terrain.castShadow = true;
         scene.add(terrain);
 
+        // Add camp structure
+        const campGeometry = new THREE.BoxGeometry(10, 5, 10);
+        const campMaterial = new THREE.MeshPhongMaterial({ color: 0x8B4513 }); // Brown for camp
+        const camp = new THREE.Mesh(campGeometry, campMaterial);
+        camp.position.set(0, 2.5, 0); // Centered at origin, raised slightly
+        camp.castShadow = true;
+        camp.receiveShadow = true;
+        scene.add(camp);
+        updateLoadingProgress();
+
         const player = {
             height: 2,
             radius: 0.5,
@@ -521,25 +532,26 @@
         }
 
         class Bullet {
-            constructor(position, direction) {
+            constructor(position, direction, isEnemy = false) {
                 this.position = position.clone();
                 this.direction = direction.clone().normalize();
-                this.speed = weapons[currentWeapon].bulletSpeed;
-                this.damage = weapons[currentWeapon].damage;
+                this.speed = isEnemy ? 1 : weapons[currentWeapon].bulletSpeed;
+                this.damage = isEnemy ? 10 : weapons[currentWeapon].damage;
                 this.active = true;
                 this.distanceTraveled = 0;
                 this.maxDistance = 50;
+                this.isEnemy = isEnemy;
 
                 this.mesh = new THREE.Mesh(
                     new THREE.SphereGeometry(0.1, 8, 8),
-                    new THREE.MeshBasicMaterial({ color: currentWeapon === 0 ? 0xff0000 : 0x00ffff })
+                    new THREE.MeshBasicMaterial({ color: isEnemy ? 0xff00ff : (currentWeapon === 0 ? 0xff0000 : 0x00ffff) })
                 );
                 this.mesh.position.copy(this.position);
                 scene.add(this.mesh);
 
                 this.element = document.createElement('div');
                 this.element.className = 'bullet';
-                this.element.style.background = currentWeapon === 0 ? '#ff0000' : '#00ffff';
+                this.element.style.background = isEnemy ? '#ff00ff' : (currentWeapon === 0 ? '#ff0000' : '#00ffff');
                 document.getElementById('bullet-container').appendChild(this.element);
             }
 
@@ -562,13 +574,21 @@
                 this.element.style.left = x + 'px';
                 this.element.style.top = y + 'px';
 
-                for (let i = enemies.length - 1; i >= 0; i--) {
-                    const enemy = enemies[i];
-                    const distance = this.position.distanceTo(enemy.position);
-                    if (distance < 1) {
-                        enemy.takeDamage(this.damage);
+                if (this.isEnemy) {
+                    const distance = this.position.distanceTo(camera.position);
+                    if (distance < player.radius) {
+                        takeDamage(this.damage);
                         this.remove();
-                        break;
+                    }
+                } else {
+                    for (let i = enemies.length - 1; i >= 0; i--) {
+                        const enemy = enemies[i];
+                        const distance = this.position.distanceTo(enemy.position);
+                        if (distance < 1) {
+                            enemy.takeDamage(this.damage);
+                            this.remove();
+                            break;
+                        }
                     }
                 }
             }
@@ -579,8 +599,9 @@
                 this.mesh.geometry.dispose();
                 this.mesh.material.dispose();
                 this.element.remove();
-                const index = bullets.indexOf(this);
-                if (index !== -1) bullets.splice(index, 1);
+                const array = this.isEnemy ? enemyBullets : bullets;
+                const index = array.indexOf(this);
+                if (index !== -1) array.splice(index, 1);
             }
         }
 
@@ -593,8 +614,10 @@
                 this.active = true;
                 this.type = Math.random() < 0.7 ? 'grunt' : 'elite';
                 this.speed = this.type === 'grunt' ? 0.04 : 0.06;
-                this.attackRange = this.type === 'grunt' ? 3 : 5;
-                this.attackDamage = this.type === 'grunt' ? 8 : 15;
+                this.attackRange = this.type === 'grunt' ? 15 : 20; // Increased for shooting
+                this.attackDamage = this.type === 'grunt' ? 8 : 12;
+                this.lastShot = 0;
+                this.shootCooldown = this.type === 'grunt' ? 2000 : 1500; // ms between shots
                 this.setupElements();
                 this.spawn();
             }
@@ -613,9 +636,9 @@
             spawn() {
                 let distance;
                 do {
-                    this.position.x = camera.position.x + (Math.random() - 0.5) * 100;
-                    this.position.z = camera.position.z + (Math.random() - 0.5) * 100;
-                    distance = this.position.distanceTo(camera.position);
+                    this.position.x = (Math.random() - 0.5) * 100;
+                    this.position.z = (Math.random() - 0.5) * 100;
+                    distance = this.position.distanceTo(new THREE.Vector3(0, 0, 0)); // Spawn around camp
                 } while (distance < 20 || distance > 80);
                 this.position.y = getHeightAtPosition(this.position.x, this.position.z) + 1.5;
             }
@@ -632,16 +655,21 @@
                 if (distance > this.attackRange) {
                     this.position.add(direction.multiplyScalar(this.speed));
                     this.position.y = getHeightAtPosition(this.position.x, this.position.z) + 1.5;
-                } else if (gameActive && Math.random() < 0.02) {
-                    this.attack();
+                } else if (gameActive) {
+                    this.shoot(direction);
                 }
                 
                 this.updateDOM();
                 this.updateMinimap();
             }
 
-            attack() {
-                takeDamage(this.attackDamage);
+            shoot(direction) {
+                const now = performance.now();
+                if (now - this.lastShot < this.shootCooldown) return;
+                this.lastShot = now;
+
+                const bullet = new Bullet(this.position, direction, true);
+                enemyBullets.push(bullet);
             }
 
             takeDamage(amount) {
@@ -649,7 +677,7 @@
                 if (this.health <= 0) {
                     this.remove();
                     kills++;
-                    document.getElementById('kill-counter').textContent = `Kills: ${kills}`;
+                    document.getElementById('kill-counter').textContent = `Enemies Eliminated: ${kills}`;
                     checkWinCondition();
                 }
             }
@@ -676,7 +704,8 @@
                     const scale = Math.max(0.2, 1 - distance / 50);
                     this.element.style.display = 'block';
                     this.element.style.left = x + 'px';
-                    this.element.style.top = y + 'px';
+                    this.element.style.t
+op = y + 'px';
                     this.element.style.transform = `translate(-50%, -50%) scale(${scale})`;
                 } else {
                     this.element.style.display = 'none';
@@ -894,15 +923,17 @@
             const title = document.getElementById('game-over-title');
             const subtitle = document.getElementById('game-over-subtitle');
             if (playerWon) {
-                title.textContent = "Level Completed";
-                subtitle.textContent = "Choose a different level";
+                title.textContent = "Camp Defended";
+                subtitle.textContent = "Prepare for the next wave";
             } else {
-                title.textContent = "Game Over";
+                title.textContent = "Camp Overrun";
                 subtitle.textContent = "";
             }
             document.getElementById('game-over').style.display = 'flex';
             bullets.forEach(bullet => bullet.remove());
+            enemyBullets.forEach(bullet => bullet.remove());
             bullets = [];
+            enemyBullets = [];
             stopBackgroundMusic();
             document.exitPointerLock();
         }
@@ -930,7 +961,9 @@
             enemies.forEach(enemy => enemy.remove());
             enemies = [];
             bullets.forEach(bullet => bullet.remove());
+            enemyBullets.forEach(bullet => bullet.remove());
             bullets = [];
+            enemyBullets = [];
 
             // Reset DOM elements
             document.getElementById('enemy-container').innerHTML = '';
@@ -944,7 +977,7 @@
             document.getElementById('health-fill').style.width = '100%';
             document.getElementById('shield-fill').style.width = '100%';
             document.getElementById('ammo-counter').textContent = `${currentAmmo} / ${totalAmmo}`;
-            document.getElementById('kill-counter').textContent = `Kills: 0`;
+            document.getElementById('kill-counter').textContent = `Enemies Eliminated: 0`;
             document.getElementById('weapon-switch').textContent = weapons[currentWeapon].name;
 
             // Reset camera position and rotation
@@ -1002,6 +1035,7 @@
                 updatePlayerMovement(delta);
                 enemies.forEach(enemy => enemy.update());
                 bullets.forEach(bullet => bullet.update());
+                enemyBullets.forEach(bullet => bullet.update());
                 if (mouseDown && currentAmmo > 0 && !reloading && weapons[currentWeapon].auto) shoot();
             }
             composer.render();
