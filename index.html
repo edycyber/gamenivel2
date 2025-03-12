@@ -314,21 +314,18 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/MaskPass.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/FXAAShader.js"></script>
 
     <script>
         // Game variables
         let assetsLoaded = 0;
-        const totalAssets = 6; // Increased for camp
+        const totalAssets = 3; // Terrain, camp, obstacles
         let kills = 0;
         let health = 100;
         let shield = 100;
@@ -339,7 +336,7 @@
         let enemies = [];
         let obstacles = [];
         let bullets = [];
-        let enemyBullets = []; // New array for enemy bullets
+        let enemyBullets = [];
         let currentWeapon = 0;
         let backgroundMusic;
         let musicStarted = false;
@@ -354,9 +351,11 @@
             assetsLoaded++;
             const progress = assetsLoaded / totalAssets * 100;
             document.querySelector('#loading-progress').style.width = progress + '%';
+            console.log(`Asset loaded: ${assetsLoaded}/${totalAssets}`);
             if (assetsLoaded >= totalAssets) {
                 setTimeout(() => {
                     document.querySelector('#preloader').style.display = 'none';
+                    console.log("Preloader hidden, game should be visible");
                 }, 500);
             }
         }
@@ -409,26 +408,14 @@
         }
 
         const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // Light blue sky
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.getElementById('world').appendChild(renderer.domElement);
-
-        const pmremGenerator = new THREE.PMREMGenerator(renderer);
-        pmremGenerator.compileEquirectangularShader();
-        
-        new THREE.RGBELoader()
-            .setDataType(THREE.UnsignedByteType)
-            .load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/sunset_in_the_chalk_quarry_1k.hdr', function(texture) {
-                const envMap = pmremGenerator.fromEquirectangular(texture).texture;
-                scene.environment = envMap;
-                scene.background = envMap;
-                texture.dispose();
-                pmremGenerator.dispose();
-                updateLoadingProgress();
-            });
+        console.log("Renderer initialized");
 
         const terrainGeometry = new THREE.PlaneBufferGeometry(200, 200, 200, 200);
         const positions = terrainGeometry.attributes.position.array;
@@ -440,29 +427,29 @@
         }
         terrainGeometry.computeVertexNormals();
 
-        const textureLoader = new THREE.TextureLoader();
         const terrainMaterial = new THREE.MeshPhongMaterial({
-            map: textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/terrain/grasslight-big.jpg', updateLoadingProgress),
-            color: 0x777777,
+            color: 0x777777, // Fallback gray if texture fails
             shininess: 10,
             specular: 0x222222
         });
-
         const terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
         terrain.rotation.x = -Math.PI / 2;
         terrain.receiveShadow = true;
         terrain.castShadow = true;
         scene.add(terrain);
+        updateLoadingProgress();
+        console.log("Terrain added");
 
         // Add camp structure
         const campGeometry = new THREE.BoxGeometry(10, 5, 10);
         const campMaterial = new THREE.MeshPhongMaterial({ color: 0x8B4513 }); // Brown for camp
         const camp = new THREE.Mesh(campGeometry, campMaterial);
-        camp.position.set(0, 2.5, 0); // Centered at origin, raised slightly
+        camp.position.set(0, 2.5, 0);
         camp.castShadow = true;
         camp.receiveShadow = true;
         scene.add(camp);
         updateLoadingProgress();
+        console.log("Camp added");
 
         const player = {
             height: 2,
@@ -493,6 +480,7 @@
 
         const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
         scene.add(ambientLight);
+        console.log("Ambient light added");
         
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
         directionalLight.position.set(50, 100, -50);
@@ -506,6 +494,7 @@
         directionalLight.shadow.camera.top = 100;
         directionalLight.shadow.camera.bottom = -100;
         scene.add(directionalLight);
+        console.log("Directional light added");
 
         function createObstacle(x, z, scale) {
             const height = getHeightAtPosition(x, z);
@@ -530,6 +519,7 @@
             const scale = Math.random() * 3 + 2;
             createObstacle(x, z, scale);
         }
+        console.log("Obstacles added");
 
         class Bullet {
             constructor(position, direction, isEnemy = false) {
@@ -614,10 +604,10 @@
                 this.active = true;
                 this.type = Math.random() < 0.7 ? 'grunt' : 'elite';
                 this.speed = this.type === 'grunt' ? 0.04 : 0.06;
-                this.attackRange = this.type === 'grunt' ? 15 : 20; // Increased for shooting
+                this.attackRange = this.type === 'grunt' ? 15 : 20;
                 this.attackDamage = this.type === 'grunt' ? 8 : 12;
                 this.lastShot = 0;
-                this.shootCooldown = this.type === 'grunt' ? 2000 : 1500; // ms between shots
+                this.shootCooldown = this.type === 'grunt' ? 2000 : 1500;
                 this.setupElements();
                 this.spawn();
             }
@@ -638,7 +628,7 @@
                 do {
                     this.position.x = (Math.random() - 0.5) * 100;
                     this.position.z = (Math.random() - 0.5) * 100;
-                    distance = this.position.distanceTo(new THREE.Vector3(0, 0, 0)); // Spawn around camp
+                    distance = this.position.distanceTo(new THREE.Vector3(0, 0, 0));
                 } while (distance < 20 || distance > 80);
                 this.position.y = getHeightAtPosition(this.position.x, this.position.z) + 1.5;
             }
@@ -704,8 +694,7 @@
                     const scale = Math.max(0.2, 1 - distance / 50);
                     this.element.style.display = 'block';
                     this.element.style.left = x + 'px';
-                    this.element.style.t
-op = y + 'px';
+                    this.element.style.top = y + 'px';
                     this.element.style.transform = `translate(-50%, -50%) scale(${scale})`;
                 } else {
                     this.element.style.display = 'none';
@@ -811,7 +800,7 @@ op = y + 'px';
             document.getElementById('weapon-switch').textContent = weapons[currentWeapon].name;
             document.getElementById('ammo-counter').textContent = `${currentAmmo} / ${totalAmmo}`;
             document.getElementById('weapon').style.backgroundImage = 
-                `url(gun.png)`; // Replace with actual weapon images
+                `url(gun.png)`;
         }
 
         function updatePlayerMovement(delta) {
@@ -885,7 +874,7 @@ op = y + 'px';
 
             if (health <= 0) {
                 health = 0;
-                gameOver(false); // Player lost
+                gameOver(false);
             }
 
             document.getElementById('health-fill').style.width = health + '%';
@@ -910,11 +899,12 @@ op = y + 'px';
             for (let i = 0; i < totalEnemiesToSpawn; i++) {
                 enemies.push(new Enemy());
             }
+            console.log("Enemies spawned");
         }
 
         function checkWinCondition() {
             if (gameActive && kills >= totalEnemiesToSpawn && enemies.length === 0) {
-                gameOver(true); // Player won
+                gameOver(true);
             }
         }
 
@@ -936,13 +926,11 @@ op = y + 'px';
             enemyBullets = [];
             stopBackgroundMusic();
             document.exitPointerLock();
+            console.log("Game over triggered");
         }
 
         function resetGame() {
-            // Hide the game over overlay
             document.getElementById('game-over').style.display = 'none';
-
-            // Reset game state
             gameActive = true;
             health = 100;
             shield = 100;
@@ -957,7 +945,6 @@ op = y + 'px';
             player.canJump = false;
             player.lastDamageTime = 0;
 
-            // Clear enemies and bullets
             enemies.forEach(enemy => enemy.remove());
             enemies = [];
             bullets.forEach(bullet => bullet.remove());
@@ -965,7 +952,6 @@ op = y + 'px';
             bullets = [];
             enemyBullets = [];
 
-            // Reset DOM elements
             document.getElementById('enemy-container').innerHTML = '';
             document.getElementById('bullet-container').innerHTML = '';
             document.getElementById('minimap-content').innerHTML = `
@@ -973,23 +959,20 @@ op = y + 'px';
                 <div class="minimap-direction"></div>
             `;
 
-            // Reset UI
             document.getElementById('health-fill').style.width = '100%';
             document.getElementById('shield-fill').style.width = '100%';
             document.getElementById('ammo-counter').textContent = `${currentAmmo} / ${totalAmmo}`;
             document.getElementById('kill-counter').textContent = `Enemies Eliminated: 0`;
             document.getElementById('weapon-switch').textContent = weapons[currentWeapon].name;
 
-            // Reset camera position and rotation
             camera.position.set(0, player.height, 0);
             camera.rotation.set(0, 0, 0);
 
-            // Spawn enemies immediately
             spawnEnemies();
             startBackgroundMusic();
+            console.log("Game reset");
         }
 
-        // Add restart button listener
         document.getElementById('restart-button').addEventListener('click', resetGame);
 
         const composer = new THREE.EffectComposer(renderer);
@@ -1041,10 +1024,10 @@ op = y + 'px';
             composer.render();
         }
 
-        // Initial game setup
         camera.position.set(0, player.height, 0);
         spawnEnemies();
         animate();
+        console.log("Game started");
     </script>
 </body>
 </html>
