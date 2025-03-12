@@ -297,7 +297,7 @@
         <div class="shield-bar">
             <div class="shield-fill"></div>
         </div>
-        <div id="ammo-counter">30 / 90</div>
+        <div id="ammo-counter">30 / 300</div>
         <div class="weapon-switch">Assault Rifle</div>
         <div id="kill-counter">Enemies Eliminated: 0</div>
     </div>
@@ -314,6 +314,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
@@ -325,12 +326,12 @@
     <script>
         // Game variables
         let assetsLoaded = 0;
-        const totalAssets = 3; // Terrain, camp, obstacles
+        const totalAssets = 5; // HDR, terrain texture, terrain, camp, obstacles
         let kills = 0;
         let health = 100;
         let shield = 100;
         let currentAmmo = 30;
-        let totalAmmo = 90;
+        let totalAmmo = 300; // Increased from 90 to 300
         let reloading = false;
         let gameActive = true;
         let enemies = [];
@@ -408,7 +409,6 @@
         }
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB); // Light blue sky
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -416,6 +416,23 @@
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.getElementById('world').appendChild(renderer.domElement);
         console.log("Renderer initialized");
+
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        pmremGenerator.compileEquirectangularShader();
+        
+        new THREE.RGBELoader()
+            .setDataType(THREE.UnsignedByteType)
+            .load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/sunset_in_the_chalk_quarry_1k.hdr', function(texture) {
+                const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+                scene.environment = envMap;
+                scene.background = envMap;
+                texture.dispose();
+                pmremGenerator.dispose();
+                updateLoadingProgress();
+                console.log("HDR environment loaded");
+            }, undefined, function(error) {
+                console.error("Error loading HDR:", error);
+            });
 
         const terrainGeometry = new THREE.PlaneBufferGeometry(200, 200, 200, 200);
         const positions = terrainGeometry.attributes.position.array;
@@ -427,11 +444,18 @@
         }
         terrainGeometry.computeVertexNormals();
 
+        const textureLoader = new THREE.TextureLoader();
         const terrainMaterial = new THREE.MeshPhongMaterial({
-            color: 0x777777, // Fallback gray if texture fails
+            map: textureLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/terrain/grasslight-big.jpg', updateLoadingProgress, undefined, function(error) {
+                console.error("Error loading terrain texture:", error);
+                terrainMaterial.color = new THREE.Color(0x777777); // Fallback
+                terrainMaterial.needsUpdate = true;
+            }),
+            color: 0x777777,
             shininess: 10,
             specular: 0x222222
         });
+
         const terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
         terrain.rotation.x = -Math.PI / 2;
         terrain.receiveShadow = true;
@@ -442,7 +466,7 @@
 
         // Add camp structure
         const campGeometry = new THREE.BoxGeometry(10, 5, 10);
-        const campMaterial = new THREE.MeshPhongMaterial({ color: 0x8B4513 }); // Brown for camp
+        const campMaterial = new THREE.MeshPhongMaterial({ color: 0x8B4513 });
         const camp = new THREE.Mesh(campGeometry, campMaterial);
         camp.position.set(0, 2.5, 0);
         camp.castShadow = true;
@@ -935,7 +959,7 @@
             health = 100;
             shield = 100;
             currentAmmo = weapons[currentWeapon].maxAmmo;
-            totalAmmo = 90;
+            totalAmmo = 300; // Reset to 300
             kills = 0;
             reloading = false;
             mouseDown = false;
