@@ -469,8 +469,8 @@
         const gltfLoader = new THREE.GLTFLoader();
         gltfLoader.load('./textured_mesh.glb', function(gltf) {
             const camp = gltf.scene;
-            camp.position.set(0, 0, 0); // Adjust position as needed
-            camp.scale.set(19, 19, 19); // Adjust scale if necessary
+            camp.position.set(0, 2, 0); // Adjust position as needed
+            camp.scale.set(15, 15, 15); // Adjust scale if necessary
             camp.traverse(function(child) {
                 if (child.isMesh) {
                     child.castShadow = true;
